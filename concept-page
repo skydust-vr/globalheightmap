@@ -1,0 +1,1071 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elevation Grid Data</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for the grid container to ensure a 10x10 view */
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(10, minmax(0, 1fr));
+            grid-auto-rows: minmax(2.5rem, 1fr); /* Ensures consistent row height */
+        }
+        /* Style for grid cells */
+        .grid-cell {
+            transition: all 0.2s ease-in-out;
+            border: 1px solid #e5e7eb;
+            background-color: #ffffff;
+        }
+        .grid-cell-color {
+            height: 100%;
+            width: 100%;
+            border: 1px solid #e5e7eb;
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+        }
+        .grid-cell:hover {
+            transform: scale(1.05);
+            z-index: 10;
+        }
+        /* Custom range slider thumb styling */
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background-color: #3b82f6;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 2px rgba(0,0,0,0.3);
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background-color: #3b82f6;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 2px rgba(0,0,0,0.3);
+        }
+        .grid-cell-third {
+            transition: all 0.2s ease-in-out;
+            border: 1px solid #e5e7eb;
+            background-color: #f1f5f9;
+            color: #1e293b;
+        }
+        .sound-cell {
+            background-color: #a3e635; /* bg-lime-400 */
+            transition: background-color 0.1s ease-in-out;
+        }
+        .triggered {
+            background-color: #d9f991; /* bg-lime-200 */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4 font-sans">
+    <div class="bg-white rounded-xl shadow-lg p-6 w-full max-w-lg space-y-4">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-2">Elevation Grid Data</h1>
+        <p class="text-center text-gray-600 mb-4">Slices of latitude, spread across a 10x10 grid.</p>
+
+        <!-- Loading indicator -->
+        <div id="loading" class="text-center text-gray-600 text-lg">
+            Loading elevation data...
+        </div>
+
+        <!-- Start Audio button -->
+        <div id="start-screen" class="flex flex-col items-center justify-center p-6 space-y-4 border-2 border-dashed border-gray-300 rounded-lg">
+            <p class="text-center text-gray-600">Click to enable sound and start the visualization.</p>
+            <button id="startAudioBtn" class="px-6 py-3 bg-blue-500 text-white font-bold rounded-lg shadow-md hover:bg-blue-600 transition-colors duration-200">
+                Start Visualization
+            </button>
+        </div>
+
+        <!-- All main UI sections, initially hidden -->
+        <div id="main-ui" class="hidden space-y-4">
+            <!-- Controls for navigation and auto-scan -->
+            <div id="controls" class="space-y-4">
+                <!-- Manual Navigation Buttons -->
+                <div class="flex items-center justify-between space-x-4">
+                    <button id="prevBtn" class="px-4 py-2 bg-blue-500 text-white rounded-lg shadow-md hover:bg-blue-600 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                        &larr; Previous
+                    </button>
+                    <span id="currentLongitude" class="text-lg font-semibold text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis"></span>
+                    <button id="nextBtn" class="px-4 py-2 bg-blue-500 text-white rounded-lg shadow-md hover:bg-blue-600 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                        Next &rarr;
+                    </button>
+                </div>
+            
+                <!-- FPS and Auto-Scan Slider -->
+                <div class="space-y-2">
+                    <label for="fps-slider" class="text-gray-700 text-sm font-medium flex justify-between">
+                        <span>Auto-Scan Speed (FPS)</span>
+                        <span id="fps-display">0</span>
+                    </label>
+                    <input type="range" id="fps-slider" min="-60" max="60" value="0" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                </div>
+            </div>
+
+            <!-- Raw Data Grid Container -->
+            <div class="space-y-2">
+                <h2 class="text-xl font-bold text-gray-800">Raw Elevation Data</h2>
+                <div id="grid-container" class="grid-container border-2 border-gray-300 rounded-lg overflow-hidden transition-all duration-300"></div>
+            </div>
+
+            <!-- Color-Coded Grid Container -->
+            <div class="space-y-2">
+                <h2 class="text-xl font-bold text-gray-800">Visualized Elevation</h2>
+                <div id="color-grid-container" class="grid-container border-2 border-gray-300 rounded-lg overflow-hidden transition-all duration-300"></div>
+            
+                <!-- Grid Order Blending Slider -->
+                <div class="mt-4 space-y-2">
+                    <label for="shuffleSlider" class="text-gray-700 text-sm font-medium flex justify-between">
+                        <span>Grid Randomize</span>
+                        <span id="shuffle-display">0%</span>
+                    </label>
+                    <input type="range" id="shuffleSlider" min="0" max="1" step="0.01" value="0" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <!-- Elevation Range Control Sliders -->
+                <div class="mt-4 space-y-4">
+                    <h3 class="text-lg font-semibold text-gray-700">Colour Range</h3>
+                    <p class="text-sm text-gray-500">
+                        Adjust these sliders to set the minimum and maximum elevations for the color display.
+                    </p>
+                    <div>
+                        <label for="min-elevation-slider" class="text-sm font-medium text-gray-700 flex justify-between">
+                            <span>Min Elevation</span>
+                            <span id="min-elevation-display"></span>
+                        </label>
+                        <input type="range" id="min-elevation-slider" class="w-full h-2 bg-red-200 rounded-lg appearance-none cursor-pointer">
+                    </div>
+
+                    <div>
+                        <label for="max-elevation-slider" class="text-sm font-medium text-gray-700 flex justify-between">
+                            <span>Max Elevation</span>
+                            <span id="max-elevation-display"></span>
+                        </label>
+                        <input type="range" id="max-elevation-slider" class="w-full h-2 bg-black-200 rounded-lg appearance-none cursor-pointer">
+                    </div>
+                </div>
+
+                <!-- Color legend for elevation values -->
+                <div id="legend" class="mt-4 p-4 bg-gray-50 rounded-lg shadow border border-gray-200">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-2">Colour Palette</h3>
+                    <div id="colorGradient" class="h-6 w-full rounded-md"></div>
+                    <div class="flex justify-between text-sm text-gray-600 mt-1">
+                        <span id="minElevationLabel"></span>
+                        <span id="zeroElevationLabel">0 m</span>
+                        <span id="maxElevationLabel"></span>
+                    </div>
+                </div>
+
+                <!-- Colour Palette Customization -->
+                <div class="mt-4 space-y-4">
+                
+                    <div class="flex flex-wrap justify-between items-center space-y-2 sm:space-y-0 sm:space-x-4">
+                        <input type="color" id="color1Input" value="#fbb4ae" class="w-8 h-8 rounded-lg border-none">
+                        <input type="color" id="color2Input" value="#b3cde3" class="w-8 h-8 rounded-lg border-none">
+                        <input type="color" id="color3Input" value="#ccebc5" class="w-8 h-8 rounded-lg border-none">
+                        <input type="color" id="color4Input" value="#decbe4" class="w-8 h-8 rounded-lg border-none">
+                        <input type="color" id="color5Input" value="#fed9a6" class="w-8 h-8 rounded-lg border-none">
+                        <input type="color" id="color6Input" value="#ffffcc" class="w-8 h-8 rounded-lg border-none">
+                    </div>
+                </div>
+            
+                <!-- Gradient Type Toggle -->
+                <div class="flex items-center space-x-2 mt-4">
+                    <label for="gradientTypeToggle" class="text-sm font-medium text-gray-700">
+                        Smooth Gradient
+                    </label>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="gradientTypeToggle" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                    <label for="gradientTypeToggle" class="text-sm font-medium text-gray-700">
+                        Hard Cutoff
+                    </label>
+                </div>
+            </div>
+
+            <!-- New Grid Container -->
+            <div class="space-y-2" id="third-grid-section">
+                <h2 class="text-xl font-bold text-gray-800">Shuffled Elevation Grid</h2>
+                <div id="third-grid-container" class="grid-container border-2 border-gray-300 rounded-lg overflow-hidden transition-all duration-300"></div>
+            </div>
+
+            <!-- Soundboard Grid Container -->
+            <div class="space-y-2 mt-4">
+                <h2 class="text-xl font-bold text-gray-800">Soundboard (Triggered by changes)</h2>
+                <p class="text-sm text-gray-500">
+                    Volume at +6700m is full volume (100%). Use the slider below to control the minimum volume at -8000m.
+                </p>
+                <div class="flex space-x-4 mb-4">
+                    <div class="w-1/2">
+                        <label for="keySelect" class="block text-sm font-medium text-gray-700">Key</label>
+                        <select id="keySelect" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
+                            <option value="C">C</option>
+                            <option value="Db">Db</option>
+                            <option value="D">D</option>
+                            <option value="Eb">Eb</option>
+                            <option value="E">E</option>
+                            <option value="F">F</option>
+                            <option value="Gb">Gb</option>
+                            <option value="G">G</option>
+                            <option value="Ab">Ab</option>
+                            <option value="A">A</option>
+                            <option value="Bb">Bb</option>
+                            <option value="B">B</option>
+                        </select>
+                    </div>
+                    <div class="w-1/2">
+                        <label for="scaleSelect" class="block text-sm font-medium text-gray-700">Scale</label>
+                        <select id="scaleSelect" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
+                            <option value="major">Major</option>
+                            <option value="minor">Minor</option>
+                            <option value="pentatonic">Pentatonic</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <!-- Octave Controls -->
+                <div class="flex items-center justify-center space-x-4">
+                    <button id="octaveDownBtn" class="px-3 py-1 bg-blue-500 text-white rounded-lg shadow-md hover:bg-blue-600 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-xl font-bold">-</button>
+                    <span id="currentOctaveDisplay" class="text-lg font-semibold text-gray-700">Octave: 0</span>
+                    <button id="octaveUpBtn" class="px-3 py-1 bg-blue-500 text-white rounded-lg shadow-md hover:bg-blue-600 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-xl font-bold">+</button>
+                </div>
+                
+                <!-- New Sensitivity Slider -->
+                <div class="space-y-2">
+                    <label for="sensitivitySlider" class="text-gray-700 text-sm font-medium flex justify-between">
+                        <span>Change Sensitivity (meters)</span>
+                        <span id="sensitivityDisplay">1000</span>
+                    </label>
+                    <input type="range" id="sensitivitySlider" min="0" max="2000" step="1" value="1000" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <!-- New Min Volume % Slider -->
+                <div class="mt-4 space-y-2">
+                    <label for="minVolumePercentSlider" class="text-sm font-medium text-gray-700 flex justify-between">
+                        <span>Min Volume % at -8000m</span>
+                        <span id="minVolumePercentDisplay">0%</span>
+                    </label>
+                    <input type="range" id="minVolumePercentSlider" min="0" max="100" step="1" value="0" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <!-- New White Noise Volume Slider -->
+                <div class="mt-4 space-y-2">
+                    <label for="whiteNoiseVolumeSlider" class="text-sm font-medium text-gray-700 flex justify-between">
+                        <span>White Noise Volume</span>
+                        <span id="whiteNoiseVolumeDisplay">50%</span>
+                    </label>
+                    <input type="range" id="whiteNoiseVolumeSlider" min="0" max="100" step="1" value="50" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <!-- New White Noise Length Slider -->
+                <div class="mt-4 space-y-2">
+                    <label for="whiteNoiseLengthSlider" class="text-sm font-medium text-gray-700 flex justify-between">
+                        <span>White Noise Length (ms)</span>
+                        <span id="whiteNoiseLengthDisplay">20</span>
+                    </label>
+                    <input type="range" id="whiteNoiseLengthSlider" min="1" max="160" step="1" value="20" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                </div>
+                
+                <!-- New White Noise Probability Slider -->
+                <div class="mt-4 space-y-2">
+                    <label for="whiteNoiseProbabilitySlider" class="text-sm font-medium text-gray-700 flex justify-between">
+                        <span>White Noise Probability</span>
+                        <span id="whiteNoiseProbabilityDisplay">100%</span>
+                    </label>
+                    <input type="range" id="whiteNoiseProbabilitySlider" min="0" max="100" step="1" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                </div>
+                
+                <!-- New Note Length Slider -->
+                <div class="mt-4 space-y-2">
+                    <label for="noteLengthSlider" class="text-sm font-medium text-gray-700 flex justify-between">
+                        <span>Note Length (ms)</span>
+                        <span id="noteLengthDisplay">200</span>
+                    </label>
+                    <input type="range" id="noteLengthSlider" min="50" max="1000" step="10" value="200" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <div id="soundboard-container" class="grid-container border-2 border-gray-300 rounded-lg overflow-hidden"></div>
+            </div>
+
+            <!-- New Reverb Controls Section -->
+            <div id="reverb-controls" class="mt-4 space-y-4">
+                <h2 class="text-xl font-bold text-gray-800">Reverb Controls</h2>
+                <!-- Reverb Toggle -->
+                <div class="flex items-center space-x-2">
+                    <label for="reverbToggle" class="text-sm font-medium text-gray-700">
+                        Enable Reverb
+                    </label>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="reverbToggle" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+                
+                <!-- Reverb Decay Slider -->
+                <div class="space-y-2">
+                    <label for="decayTimeSlider" class="text-gray-700 text-sm font-medium flex justify-between">
+                        <span>Reverb Decay (seconds)</span>
+                        <span id="decayTimeDisplay">1</span>
+                    </label>
+                    <input type="range" id="decayTimeSlider" min="0.1" max="5" step="0.1" value="1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                </div>
+                
+                <!-- Wet/Dry Mix Slider -->
+                <div class="space-y-2">
+                    <label for="wetDrySlider" class="text-sm font-medium text-gray-700 flex justify-between">
+                        <span>Wet/Dry Mix</span>
+                        <span id="wetDryDisplay">0.5</span>
+                    </label>
+                    <input type="range" id="wetDrySlider" min="0" max="1" step="0.01" value="0.5" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- PapaParse for CSV parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <!-- D3.js for data visualization and scales -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const loadingDiv = document.getElementById('loading');
+            const startScreen = document.getElementById('start-screen');
+            const startAudioBtn = document.getElementById('startAudioBtn');
+            const mainUI = document.getElementById('main-ui');
+            const gridContainer = document.getElementById('grid-container');
+            const colorGridContainer = document.getElementById('color-grid-container');
+            const thirdGridContainer = document.getElementById('third-grid-container');
+            const soundboardContainer = document.getElementById('soundboard-container');
+            const prevBtn = document.getElementById('prevBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            const currentLongitudeSpan = document.getElementById('currentLongitude');
+            const fpsSlider = document.getElementById('fps-slider');
+            const fpsDisplay = document.getElementById('fps-display');
+            const minElevationLabel = document.getElementById('minElevationLabel');
+            const maxElevationLabel = document.getElementById('maxElevationLabel');
+            const minElevationSlider = document.getElementById('min-elevation-slider');
+            const maxElevationSlider = document.getElementById('max-elevation-slider');
+            const minElevationDisplay = document.getElementById('min-elevation-display');
+            const maxElevationDisplay = document.getElementById('max-elevation-display');
+            const colorGradientDiv = document.getElementById('colorGradient');
+            const colorInputs = [
+                document.getElementById('color1Input'),
+                document.getElementById('color2Input'),
+                document.getElementById('color3Input'),
+                document.getElementById('color4Input'),
+                document.getElementById('color5Input'),
+                document.getElementById('color6Input')
+            ];
+            const gradientTypeToggle = document.getElementById('gradientTypeToggle');
+            const shuffleSlider = document.getElementById('shuffleSlider');
+            const shuffleDisplay = document.getElementById('shuffle-display');
+            const keySelect = document.getElementById('keySelect');
+            const scaleSelect = document.getElementById('scaleSelect');
+            const sensitivitySlider = document.getElementById('sensitivitySlider');
+            const sensitivityDisplay = document.getElementById('sensitivityDisplay');
+            const minVolumePercentSlider = document.getElementById('minVolumePercentSlider');
+            const minVolumePercentDisplay = document.getElementById('minVolumePercentDisplay');
+            const reverbToggle = document.getElementById('reverbToggle');
+            const decayTimeSlider = document.getElementById('decayTimeSlider');
+            const decayTimeDisplay = document.getElementById('decayTimeDisplay');
+            const wetDrySlider = document.getElementById('wetDrySlider');
+            const wetDryDisplay = document.getElementById('wetDryDisplay');
+            const octaveDownBtn = document.getElementById('octaveDownBtn');
+            const octaveUpBtn = document.getElementById('octaveUpBtn');
+            const currentOctaveDisplay = document.getElementById('currentOctaveDisplay');
+            // New slider elements
+            const whiteNoiseVolumeSlider = document.getElementById('whiteNoiseVolumeSlider');
+            const whiteNoiseVolumeDisplay = document.getElementById('whiteNoiseVolumeDisplay');
+            const whiteNoiseLengthSlider = document.getElementById('whiteNoiseLengthSlider');
+            const whiteNoiseLengthDisplay = document.getElementById('whiteNoiseLengthDisplay');
+            const whiteNoiseProbabilitySlider = document.getElementById('whiteNoiseProbabilitySlider');
+            const whiteNoiseProbabilityDisplay = document.getElementById('whiteNoiseProbabilityDisplay');
+            const noteLengthSlider = document.getElementById('noteLengthSlider');
+            const noteLengthDisplay = document.getElementById('noteLengthDisplay');
+
+            let allData = [];
+            let longitudes = [];
+            let currentColumnIndex = 0;
+            let animationInterval = null;
+            let colorScale;
+            let currentElevations = [];
+            let previousBlendedElevations = []; // Store the blended elevations from the previous frame
+            let shuffledIndices = []; // Will be populated and shuffled once
+            let currentOctave = 0;
+            
+            // Web Audio API context and reverb nodes
+            let audioContext = null;
+            let convolverNode;
+            let reverbEnabled = false;
+
+            // Musical scale definitions (in semitones from the root)
+            const scales = {
+                major: [0, 2, 4, 5, 7, 9, 11, 12, 14, 16],
+                minor: [0, 2, 3, 5, 7, 8, 10, 12, 14, 15],
+                pentatonic: [0, 2, 4, 7, 9, 12, 14, 16, 19, 21]
+            };
+
+            // Root note frequencies (A4 is 440Hz)
+            const rootFrequencies = {
+                'C': 261.63, 'Db': 277.18, 'D': 293.66, 'Eb': 311.13, 'E': 329.63, 'F': 349.23,
+                'Gb': 369.99, 'G': 392.00, 'Ab': 415.30, 'A': 440.00, 'Bb': 466.16, 'B': 493.88
+            };
+
+            // Fisher-Yates shuffle algorithm for an array
+            function shuffleArray(array) {
+                for (let i = array.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [array[i], array[j]] = [array[j], array[i]];
+                }
+                return array;
+            }
+
+            // Function to create a simple procedural impulse response
+            function createImpulseResponse(audioContext, decayTime) {
+                const sampleRate = audioContext.sampleRate;
+                const length = sampleRate * decayTime;
+                const buffer = audioContext.createBuffer(2, length, sampleRate);
+                const left = buffer.getChannelData(0);
+                const right = buffer.getChannelData(1);
+
+                for (let i = 0; i < length; i++) {
+                    // Generate white noise
+                    const whiteNoise = Math.random() * 2 - 1;
+                    // Apply exponential decay
+                    const decay = Math.exp(-i / length * 5);
+                    left[i] = whiteNoise * decay;
+                    right[i] = whiteNoise * decay;
+                }
+                return buffer;
+            }
+            
+            // Function to generate and play a sound
+            function playSound(frequency, volume, pan) {
+                if (!audioContext) return;
+                
+                const noteLengthMs = parseInt(noteLengthSlider.value, 10);
+                const noteLengthSec = noteLengthMs / 1000;
+
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                const pannerNode = audioContext.createStereoPanner();
+
+                oscillator.connect(gainNode);
+                gainNode.connect(pannerNode);
+
+                // Set properties
+                oscillator.type = 'sine';
+                oscillator.frequency.value = frequency;
+                gainNode.gain.value = Math.min(1.0, Math.max(0.0, volume));
+                pannerNode.pan.value = Math.min(1.0, Math.max(-1.0, pan));
+
+                if (reverbEnabled) {
+                    if (!convolverNode) {
+                         convolverNode = audioContext.createConvolver();
+                         convolverNode.buffer = createImpulseResponse(audioContext, parseFloat(decayTimeSlider.value));
+                    }
+                    const wetDryMix = parseFloat(wetDrySlider.value);
+                    const dryGain = 1 - wetDryMix;
+                    const wetGain = wetDryMix;
+
+                    const dryGainNode = audioContext.createGain();
+                    const wetGainNode = audioContext.createGain();
+
+                    dryGainNode.gain.value = dryGain;
+                    wetGainNode.gain.value = wetGain;
+                    
+                    pannerNode.connect(dryGainNode);
+                    pannerNode.connect(wetGainNode);
+                    wetGainNode.connect(convolverNode);
+                    
+                    dryGainNode.connect(audioContext.destination);
+                    convolverNode.connect(audioContext.destination);
+                } else {
+                    pannerNode.connect(audioContext.destination);
+                }
+
+                // Start and stop the sound
+                oscillator.start();
+                oscillator.stop(audioContext.currentTime + noteLengthSec);
+            }
+
+            /**
+             * Generates and plays a burst of white noise with a lowpass filter.
+             * @param {number} filterFrequency - The cutoff frequency for the lowpass filter.
+             * @param {number} pan - The stereo pan value (-1.0 to 1.0).
+             */
+            function playWhiteNoise(filterFrequency, pan) {
+                if (!audioContext) return;
+                
+                const whiteNoiseLengthMs = parseInt(whiteNoiseLengthSlider.value, 10);
+                const whiteNoiseLengthSec = whiteNoiseLengthMs / 1000;
+                const bufferSize = audioContext.sampleRate * whiteNoiseLengthSec;
+                const noiseBuffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+                const output = noiseBuffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    output[i] = Math.random() * 2 - 1; // Generate random values for white noise
+                }
+
+                const source = audioContext.createBufferSource();
+                source.buffer = noiseBuffer;
+
+                const filterNode = audioContext.createBiquadFilter();
+                filterNode.type = 'lowpass';
+                filterNode.frequency.value = filterFrequency;
+
+                const gainNode = audioContext.createGain();
+                const whiteNoiseVolume = parseInt(whiteNoiseVolumeSlider.value, 10) / 100;
+                gainNode.gain.value = whiteNoiseVolume;
+
+                const pannerNode = audioContext.createStereoPanner();
+                pannerNode.pan.value = pan;
+
+                source.connect(filterNode);
+                filterNode.connect(gainNode);
+                gainNode.connect(pannerNode);
+
+                if (reverbEnabled) {
+                    if (!convolverNode) {
+                        convolverNode = audioContext.createConvolver();
+                        convolverNode.buffer = createImpulseResponse(audioContext, parseFloat(decayTimeSlider.value));
+                    }
+                    const wetDryMix = parseFloat(wetDrySlider.value);
+                    const dryGain = 1 - wetDryMix;
+                    const wetGain = wetDryMix;
+
+                    const dryGainNode = audioContext.createGain();
+                    const wetGainNode = audioContext.createGain();
+
+                    dryGainNode.gain.value = dryGain;
+                    wetGainNode.gain.value = wetGain;
+                    
+                    pannerNode.connect(dryGainNode);
+                    pannerNode.connect(wetGainNode);
+                    wetGainNode.connect(convolverNode);
+                    
+                    dryGainNode.connect(audioContext.destination);
+                    convolverNode.connect(audioContext.destination);
+                } else {
+                    pannerNode.connect(audioContext.destination);
+                }
+
+                source.start();
+                source.stop(audioContext.currentTime + whiteNoiseLengthSec);
+            }
+
+            /**
+             * Renders the raw elevation data grid.
+             * @param {number} columnIndex - The index of the longitude column to render.
+             */
+            function renderRawGrid(columnIndex) {
+                gridContainer.innerHTML = '';
+                if (columnIndex < 0 || columnIndex >= longitudes.length) {
+                    return;
+                }
+                const currentLon = longitudes[columnIndex];
+                const numCells = 100;
+                for (let i = 0; i < numCells; i++) {
+                    const row = allData[i];
+                    let elevation = (row && row[currentLon] !== undefined) ? parseFloat(row[currentLon]) : NaN;
+                    const rawCell = document.createElement('div');
+                    rawCell.className = 'grid-cell flex items-center justify-center p-2 text-sm font-medium text-gray-800';
+                    rawCell.textContent = isNaN(elevation) ? "N/A" : elevation.toFixed(2);
+                    gridContainer.appendChild(rawCell);
+                }
+            }
+          
+            /**
+             * Renders the shuffled elevation data grid with numeric values.
+             * @param {Array<number>} blendedElevations - The array of elevations after blending.
+             */
+            function renderShuffledGrid(blendedElevations) {
+                thirdGridContainer.innerHTML = '';
+                blendedElevations.forEach(elevation => {
+                    const thirdCell = document.createElement('div');
+                    thirdCell.className = 'grid-cell-third flex items-center justify-center p-2 text-sm font-medium text-gray-800';
+                    if (!isNaN(elevation)) {
+                         thirdCell.textContent = elevation.toFixed(2);
+                    } else {
+                        thirdCell.textContent = "N/A";
+                    }
+                    thirdGridContainer.appendChild(thirdCell);
+                });
+            }
+
+            /**
+             * Checks for adjacent and diagonal triggered tiles and plays white noise based on probability.
+             * @param {Array<number>} triggeredIndices - The indices of the tiles that were triggered this frame.
+             */
+            function checkAndTriggerWhiteNoise(triggeredIndices) {
+                if (triggeredIndices.length < 2) {
+                    return;
+                }
+                
+                const probability = parseInt(whiteNoiseProbabilitySlider.value, 10);
+                const triggeredSet = new Set(triggeredIndices);
+                const processedPairs = new Set();
+                
+                // Scale to map row (0-9) to a lowpass filter frequency range (higher frequency for lower row numbers)
+                const whiteNoiseFrequencyScale = d3.scaleLinear().domain([0, 9]).range([5000, 500]).clamp(true);
+                const whiteNoisePanScale = d3.scaleLinear().domain([0, 9]).range([-1.0, 1.0]).clamp(true);
+
+                for (const index of triggeredIndices) {
+                    const row = Math.floor(index / 10);
+                    const col = index % 10;
+                    
+                    // Define all 8 potential neighbors' relative positions
+                    const neighbors = [
+                        { dr: 0, dc: 1 },  // Right
+                        { dr: 0, dc: -1 }, // Left
+                        { dr: 1, dc: 0 },  // Bottom
+                        { dr: -1, dc: 0 }, // Top
+                        { dr: 1, dc: 1 },  // Diagonal down-right
+                        { dr: 1, dc: -1 }, // Diagonal down-left
+                        { dr: -1, dc: 1 }, // Diagonal up-right
+                        { dr: -1, dc: -1 }  // Diagonal up-left
+                    ];
+
+                    for (const neighbor of neighbors) {
+                        const newRow = row + neighbor.dr;
+                        const newCol = col + neighbor.dc;
+                        const neighborIndex = newRow * 10 + newCol;
+
+                        // Check if neighbor is within bounds and is also a triggered tile
+                        if (newRow >= 0 && newRow < 10 && newCol >= 0 && newCol < 10 && triggeredSet.has(neighborIndex)) {
+                            // Create a unique key for the pair to prevent double counting
+                            const pairKey = index < neighborIndex ? `${index}-${neighborIndex}` : `${neighborIndex}-${index}`;
+                            if (!processedPairs.has(pairKey)) {
+                                processedPairs.add(pairKey);
+
+                                // Check probability
+                                const randomChance = Math.random() * 100;
+                                if (randomChance <= probability) {
+                                    // Calculate average row and column of the triggered pair
+                                    const avgRow = (row + newRow) / 2;
+                                    const avgCol = (col + newCol) / 2;
+                                    
+                                    const filterFrequency = whiteNoiseFrequencyScale(avgRow);
+                                    const pan = whiteNoisePanScale(avgCol);
+                                    playWhiteNoise(filterFrequency, pan);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            /**
+             * Renders the soundboard grid and triggers sounds based on elevation changes.
+             * @param {Array<number>} blendedElevations - The array of elevations to map to volume.
+             */
+            function renderSoundboard(blendedElevations) {
+                soundboardContainer.innerHTML = '';
+                const sensitivity = parseFloat(sensitivitySlider.value);
+                const minElev = -8000;
+                const maxElev = 6700;
+                const minVolumePercent = parseFloat(minVolumePercentSlider.value);
+                const minVolumeGain = minVolumePercent / 100;
+                
+                const triggeredIndices = [];
+
+                // Create scales for volume and pan
+                const volumeScale = d3.scaleLinear().domain([minElev, maxElev]).range([minVolumeGain, 1.0]).clamp(true);
+                const panScale = d3.scaleLinear().domain([0, 9]).range([-1.0, 1.0]).clamp(true);
+
+                const currentKey = keySelect.value;
+                const currentScale = scaleSelect.value;
+                const scaleIntervals = scales[currentScale] || scales.major;
+                const rootFreq = rootFrequencies[currentKey] || rootFrequencies.C;
+
+                for (let i = 0; i < 100; i++) {
+                    const elevation = blendedElevations[i];
+                    const soundCell = document.createElement('div');
+                    soundCell.className = 'grid-cell flex items-center justify-center p-2 text-sm font-medium text-gray-800 sound-cell';
+                    
+                    const columnIndex = i % 10;
+                    const rowIndex = Math.floor(i / 10);
+                    
+                    soundboardContainer.appendChild(soundCell);
+
+                    // Check for elevation change using the blended, shuffled data
+                    if (previousBlendedElevations.length > 0) {
+                        const previousElevation = previousBlendedElevations[i];
+                        if (!isNaN(elevation) && !isNaN(previousElevation)) {
+                            const elevationChange = Math.abs(elevation - previousElevation);
+                            if (elevationChange > sensitivity) {
+                                // Add index to triggered list
+                                triggeredIndices.push(i);
+                                
+                                // Use the blended elevation for sound properties
+                                const volume = volumeScale(elevation);
+                                const pan = panScale(rowIndex);
+                                const noteIndex = columnIndex % scaleIntervals.length;
+                                const semitones = scaleIntervals[noteIndex];
+                                
+                                // Apply the octave shift
+                                const finalSemitones = semitones + (currentOctave * 12);
+                                const frequency = rootFreq * Math.pow(2, finalSemitones / 12);
+                                
+                                playSound(frequency, volume, pan);
+
+                                // Add and remove 'triggered' class for visual feedback
+                                soundCell.classList.add('triggered');
+                                setTimeout(() => {
+                                    soundCell.classList.remove('triggered');
+                                }, 100);
+                            }
+                        }
+                    }
+                }
+                // Check for 2x2 patterns after checking all tiles
+                checkAndTriggerWhiteNoise(triggeredIndices);
+            }
+
+            /**
+             * Renders the color-coded grid based on the current elevation range and shuffle amount.
+             * @returns {Array<number>} - The blended elevation array.
+             */
+            function renderVisualGrid() {
+                colorGridContainer.innerHTML = '';
+                const shuffleAmount = parseFloat(shuffleSlider.value);
+                shuffleDisplay.textContent = `${Math.round(shuffleAmount * 100)}%`;
+
+                const numCells = 100;
+                // Determine how many cells to blend based on the slider value
+                const numToShuffle = Math.round(shuffleAmount * numCells);
+                const blendedElevations = new Array(numCells);
+
+                // Create a temporary mapping of original indices to shuffled indices
+                const originalIndexToShuffledPosition = new Array(numCells);
+                for (let i = 0; i < numCells; i++) {
+                    originalIndexToShuffledPosition[shuffledIndices[i]] = i;
+                }
+
+                for (let i = 0; i < numCells; i++) {
+                    // Check if this cell's final position is among the first 'numToShuffle' cells
+                    // This ensures the blending is progressive and stable
+                    if (originalIndexToShuffledPosition[i] < numToShuffle) {
+                        // Use the elevation from its final, shuffled position
+                        blendedElevations[i] = currentElevations[shuffledIndices[i]];
+                    } else {
+                        // Keep the original elevation in its original position
+                        blendedElevations[i] = currentElevations[i];
+                    }
+                }
+              
+                // Now, render the blended grid
+                for (let i = 0; i < numCells; i++) {
+                    const elevation = blendedElevations[i];
+                    const colorCell = document.createElement('div');
+                    colorCell.className = 'grid-cell-color';
+                  
+                    if (!isNaN(elevation)) {
+                        colorCell.style.backgroundColor = colorScale(elevation);
+                    } else {
+                        colorCell.style.backgroundColor = 'gray';
+                    }
+                    colorGridContainer.appendChild(colorCell);
+                }
+
+                // Call the new grid renderer with the blended data
+                renderShuffledGrid(blendedElevations);
+                renderSoundboard(blendedElevations);
+                return blendedElevations;
+            }
+          
+            /**
+             * Updates the color scale based on the slider values and color inputs, and re-renders the grid.
+             */
+            function updateColorScale() {
+                const minRange = parseFloat(minElevationSlider.value);
+                const maxRange = parseFloat(maxElevationSlider.value);
+                const effectiveMin = Math.min(minRange, maxRange);
+                const effectiveMax = Math.max(minRange, maxRange);
+                const colors = colorInputs.map(input => input.value);
+              
+                if (gradientTypeToggle.checked) { // Hard Cutoff
+                    const step = (effectiveMax - effectiveMin) / (colors.length);
+                    const thresholds = [];
+                    for (let i = 1; i < colors.length; i++) {
+                        thresholds.push(effectiveMin + step * i);
+                    }
+                    colorScale = d3.scaleThreshold()
+                        .domain(thresholds)
+                        .range(colors);
+
+                    let gradientString = 'linear-gradient(to right, ';
+                    const colorStepPercent = 100 / colors.length;
+                    colors.forEach((color, index) => {
+                        gradientString += `${color} ${colorStepPercent * index}%, ${color} ${colorStepPercent * (index + 1)}%`;
+                        if (index < colors.length - 1) {
+                            gradientString += ', ';
+                        }
+                    });
+                    gradientString += ')';
+                    colorGradientDiv.style.background = gradientString;
+
+                } else { // Smooth Gradient - Now uses a linear scale for smooth blending
+                    const domain = d3.range(colors.length).map(i => {
+                        return effectiveMin + (i / (colors.length - 1)) * (effectiveMax - effectiveMin);
+                    });
+                  
+                    colorScale = d3.scaleLinear()
+                        .domain(domain)
+                        .range(colors);
+                  
+                    const gradientString = `linear-gradient(to right, ${colors.join(', ')})`;
+                    colorGradientDiv.style.background = gradientString;
+                }
+              
+                minElevationDisplay.textContent = `${effectiveMin.toFixed(0)} m`;
+                maxElevationDisplay.textContent = `${effectiveMax.toFixed(0)} m`;
+              
+                renderVisualGrid();
+            }
+
+            /**
+             * Renders all grids for the current longitude column.
+             */
+            function renderColumn(columnIndex) {
+                if (columnIndex < 0 || columnIndex >= longitudes.length) {
+                    return;
+                }
+                
+                const currentLon = longitudes[columnIndex];
+                currentLongitudeSpan.textContent = `Longitude: ${parseFloat(currentLon).toFixed(2)}°`;
+              
+                if (animationInterval === null) {
+                    prevBtn.disabled = columnIndex === 0;
+                    nextBtn.disabled = columnIndex === longitudes.length - 1;
+                }
+              
+                currentElevations = [];
+                for (let i = 0; i < 100; i++) {
+                    const row = allData[i];
+                    let elevation = (row && row[currentLon] !== undefined) ? parseFloat(row[currentLon]) : NaN;
+                    currentElevations.push(elevation);
+                }
+
+                renderRawGrid(columnIndex);
+                previousBlendedElevations = renderVisualGrid();
+            }
+
+            /**
+             * Loads and parses the elevation data from the CSV file.
+             */
+            async function loadData() {
+                try {
+                    const response = await fetch('https://raw.githubusercontent.com/skydust-vr/globalheightmap/refs/heads/main/elevation_grid_data.csv');
+                    const csvText = await response.text();
+                  
+                    Papa.parse(csvText, {
+                        header: true,
+                        skipEmptyLines: true,
+                        complete: function(results) {
+                            allData = results.data.slice(1);
+                          
+                            if (allData.length >= 100) {
+                                let allLongitudes = Object.keys(allData[0]).filter(key => key !== 'latitude' && key !== '');
+
+                                // Filter out longitudes where all elevation values are the same
+                                longitudes = allLongitudes.filter(lon => {
+                                    const elevations = allData.map(row => parseFloat(row[lon])).filter(value => !isNaN(value));
+                                    if (elevations.length === 0) return false;
+                                    const firstValue = elevations[0];
+                                    return !elevations.every(value => value === firstValue);
+                                });
+
+                                longitudes.forEach(lon => {
+                                    const value49 = parseFloat(allData[48][lon]);
+                                    const value51 = parseFloat(allData[50][lon]);
+                                    if (!isNaN(value49) && !isNaN(value51)) {
+                                        allData[49][lon] = (value49 + value51) / 2;
+                                    }
+                                });
+
+                                longitudes.forEach(lon => {
+                                    const value98 = parseFloat(allData[97][lon]);
+                                    const value99 = parseFloat(allData[98][lon]);
+                                    if (!isNaN(value98) && !isNaN(value99)) {
+                                        allData[99][lon] = (value98 + value99) / 2;
+                                    }
+                                });
+
+                                // Initialize and shuffle the indices once
+                                shuffledIndices = shuffleArray(Array.from({ length: 100 }, (_, i) => i));
+
+                                minElevationSlider.min = -8000;
+                                minElevationSlider.max = 6704;
+                                minElevationSlider.value = -8000;
+
+                                maxElevationSlider.min = -8000;
+                                maxElevationSlider.max = 6704;
+                                maxElevationSlider.value = 6704;
+                                
+                                updateColorScale();
+
+                                minElevationLabel.textContent = '-8000 m';
+                                maxElevationLabel.textContent = '6704 m';
+
+                                loadingDiv.classList.add('hidden');
+                                startScreen.classList.remove('hidden');
+                            } else {
+                                loadingDiv.textContent = 'Error: No data found in CSV or data is incomplete.';
+                            }
+                        },
+                        error: function(error) {
+                            loadingDiv.textContent = `Error parsing data: ${error.message}`;
+                            console.error("Error parsing CSV:", error);
+                        }
+                    });
+
+                } catch (error) {
+                    loadingDiv.textContent = `Error fetching data: ${error.message}`;
+                    console.error("Error fetching CSV:", error);
+                }
+            }
+
+            function advanceColumn(direction) {
+                currentColumnIndex += direction;
+              
+                if (currentColumnIndex >= longitudes.length) {
+                    currentColumnIndex = 0;
+                } else if (currentColumnIndex < 0) {
+                    currentColumnIndex = longitudes.length - 1;
+                }
+              
+                renderColumn(currentColumnIndex);
+            }
+
+            startAudioBtn.addEventListener('click', () => {
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                startScreen.classList.add('hidden');
+                mainUI.classList.remove('hidden');
+                renderColumn(currentColumnIndex);
+            });
+
+            fpsSlider.addEventListener('input', (e) => {
+                const fps = parseInt(e.target.value, 10);
+                fpsDisplay.textContent = fps;
+              
+                if (animationInterval) {
+                    clearInterval(animationInterval);
+                }
+
+                if (fps !== 0) {
+                    const direction = fps > 0 ? 1 : -1;
+                    const intervalMs = 1000 / Math.abs(fps);
+
+                    prevBtn.disabled = true;
+                    nextBtn.disabled = true;
+
+                    animationInterval = setInterval(() => {
+                        advanceColumn(direction);
+                    }, intervalMs);
+                } else {
+                    prevBtn.disabled = false;
+                    nextBtn.disabled = false;
+                }
+            });
+
+            prevBtn.addEventListener('click', () => {
+                if (animationInterval) {
+                    clearInterval(animationInterval);
+                    fpsSlider.value = 0;
+                    fpsDisplay.textContent = 0;
+                }
+                if (currentColumnIndex > 0) {
+                    currentColumnIndex--;
+                    renderColumn(currentColumnIndex);
+                }
+            });
+
+            nextBtn.addEventListener('click', () => {
+                if (animationInterval) {
+                    clearInterval(animationInterval);
+                    fpsSlider.value = 0;
+                    fpsDisplay.textContent = 0;
+                }
+                if (currentColumnIndex < longitudes.length - 1) {
+                    currentColumnIndex++;
+                    renderColumn(currentColumnIndex);
+                }
+            });
+
+            minElevationSlider.addEventListener('input', updateColorScale);
+            maxElevationSlider.addEventListener('input', updateColorScale);
+            colorInputs.forEach(input => input.addEventListener('input', updateColorScale));
+            gradientTypeToggle.addEventListener('change', updateColorScale);
+            shuffleSlider.addEventListener('input', () => {
+                previousBlendedElevations = renderVisualGrid();
+            });
+            keySelect.addEventListener('change', () => renderSoundboard(previousBlendedElevations));
+            scaleSelect.addEventListener('change', () => renderSoundboard(previousBlendedElevations));
+            sensitivitySlider.addEventListener('input', (e) => {
+                sensitivityDisplay.textContent = e.target.value;
+            });
+            minVolumePercentSlider.addEventListener('input', (e) => {
+                minVolumePercentDisplay.textContent = `${e.target.value}%`;
+                renderSoundboard(previousBlendedElevations);
+            });
+            // New slider event listeners
+            whiteNoiseVolumeSlider.addEventListener('input', (e) => {
+                whiteNoiseVolumeDisplay.textContent = `${e.target.value}%`;
+            });
+            whiteNoiseLengthSlider.addEventListener('input', (e) => {
+                whiteNoiseLengthDisplay.textContent = e.target.value;
+            });
+            whiteNoiseProbabilitySlider.addEventListener('input', (e) => {
+                whiteNoiseProbabilityDisplay.textContent = `${e.target.value}%`;
+            });
+            noteLengthSlider.addEventListener('input', (e) => {
+                noteLengthDisplay.textContent = e.target.value;
+            });
+
+            reverbToggle.addEventListener('change', (e) => {
+                reverbEnabled = e.target.checked;
+            });
+
+            decayTimeSlider.addEventListener('input', (e) => {
+                decayTimeDisplay.textContent = e.target.value;
+                if (audioContext && convolverNode) {
+                    convolverNode.buffer = createImpulseResponse(audioContext, parseFloat(e.target.value));
+                }
+            });
+
+            wetDrySlider.addEventListener('input', (e) => {
+                wetDryDisplay.textContent = e.target.value;
+            });
+            
+            octaveUpBtn.addEventListener('click', () => {
+                if (currentOctave < 2) {
+                    currentOctave++;
+                    currentOctaveDisplay.textContent = `Octave: ${currentOctave}`;
+                    renderSoundboard(previousBlendedElevations);
+                }
+            });
+
+            octaveDownBtn.addEventListener('click', () => {
+                if (currentOctave > -2) {
+                    currentOctave--;
+                    currentOctaveDisplay.textContent = `Octave: ${currentOctave}`;
+                    renderSoundboard(previousBlendedElevations);
+                }
+            });
+
+            loadingDiv.classList.remove('hidden');
+            startScreen.classList.add('hidden');
+            mainUI.classList.add('hidden');
+            loadData();
+        });
+    </script>
+</body>
+</html>
