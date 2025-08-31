@@ -25,6 +25,7 @@
             border: 1px solid #e5e7eb;
             transition: all 0.2s ease-in-out;
             cursor: pointer;
+            box-sizing: border-box; /* Include padding and border in the element's total width and height */
         }
         .grid-cell:hover {
             transform: scale(1.05);
@@ -61,6 +62,24 @@
         }
         .triggered {
             background-color: #d9f991; /* bg-lime-200 */
+        }
+        /* New CSS for the flashing outline effect */
+        @keyframes pulse-border {
+            0% {
+                border-color: #e5e7eb;
+                box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+            }
+            50% {
+                border-color: #3b82f6;
+                box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.8);
+            }
+            100% {
+                border-color: #e5e7eb;
+                box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+            }
+        }
+        .flash-outline {
+            animation: pulse-border 0.5s ease-out;
         }
     </style>
 </head>
@@ -256,7 +275,7 @@
 
                 <!-- New White Noise Volume Slider -->
                 <div class="mt-4 space-y-2">
-                    <label for="whiteNoiseVolumeSlider" class="text-sm font-medium text-gray-700 flex justify-between">
+                    <label for="whiteNoiseVolumeSlider" class="text-gray-700 text-sm font-medium flex justify-between">
                         <span>White Noise Volume</span>
                         <span id="whiteNoiseVolumeDisplay">50%</span>
                     </label>
@@ -265,7 +284,7 @@
 
                 <!-- New White Noise Length Slider -->
                 <div class="mt-4 space-y-2">
-                    <label for="whiteNoiseLengthSlider" class="text-sm font-medium text-gray-700 flex justify-between">
+                    <label for="whiteNoiseLengthSlider" class="text-gray-700 text-sm font-medium flex justify-between">
                         <span>White Noise Length (ms)</span>
                         <span id="whiteNoiseLengthDisplay">20</span>
                     </label>
@@ -274,7 +293,7 @@
                 
                 <!-- New White Noise Probability Slider -->
                 <div class="mt-4 space-y-2">
-                    <label for="whiteNoiseProbabilitySlider" class="text-sm font-medium text-gray-700 flex justify-between">
+                    <label for="whiteNoiseProbabilitySlider" class="text-gray-700 text-sm font-medium flex justify-between">
                         <span>White Noise Probability</span>
                         <span id="whiteNoiseProbabilityDisplay">100%</span>
                     </label>
@@ -283,7 +302,7 @@
                 
                 <!-- New Note Length Slider -->
                 <div class="mt-4 space-y-2">
-                    <label for="noteLengthSlider" class="text-sm font-medium text-gray-700 flex justify-between">
+                    <label for="noteLengthSlider" class="text-gray-700 text-sm font-medium flex justify-between">
                         <span>Note Length (ms)</span>
                         <span id="noteLengthDisplay">200</span>
                     </label>
@@ -627,7 +646,7 @@
                         { dr: -1, dc: 0 }, // Top
                         { dr: 1, dc: 1 },  // Diagonal down-right
                         { dr: 1, dc: -1 }, // Diagonal down-left
-                        { dr: -1, dc: 1 }, // Diagonal up-right
+                        { dr: -1, dc: 1 },  // Diagonal up-right
                         { dr: -1, dc: -1 }  // Diagonal up-left
                     ];
 
@@ -684,37 +703,17 @@
                 const rootFreq = rootFrequencies[currentKey] || rootFrequencies.C;
 
                 for (let i = 0; i < 100; i++) {
-                    const elevation = blendedElevations[i];
                     const soundCell = document.createElement('div');
                     soundCell.className = 'grid-cell flex items-center justify-center p-2 text-sm font-medium text-gray-800 sound-cell';
-                    
-                    const columnIndex = i % 10;
-                    const rowIndex = Math.floor(i / 10);
-                    
                     soundboardContainer.appendChild(soundCell);
 
-                    // Check for elevation change using the blended, shuffled data
                     if (previousBlendedElevations.length > 0) {
                         const previousElevation = previousBlendedElevations[i];
+                        const elevation = blendedElevations[i];
                         if (!isNaN(elevation) && !isNaN(previousElevation)) {
                             const elevationChange = Math.abs(elevation - previousElevation);
                             if (elevationChange > sensitivity) {
-                                // Add index to triggered list
                                 triggeredIndices.push(i);
-                                
-                                // Use the blended elevation for sound properties
-                                const volume = volumeScale(elevation);
-                                const pan = panScale(rowIndex);
-                                const noteIndex = columnIndex % scaleIntervals.length;
-                                const semitones = scaleIntervals[noteIndex];
-                                
-                                // Apply the octave shift
-                                const finalSemitones = semitones + (currentOctave * 12);
-                                const frequency = rootFreq * Math.pow(2, finalSemitones / 12);
-                                
-                                playSound(frequency, volume, pan);
-
-                                // Add and remove 'triggered' class for visual feedback
                                 soundCell.classList.add('triggered');
                                 setTimeout(() => {
                                     soundCell.classList.remove('triggered');
@@ -723,7 +722,113 @@
                         }
                     }
                 }
-                // Check for 2x2 patterns after checking all tiles
+                
+                // Now, process triggered tiles for sound
+                const triggeredNotes = [];
+                const processedIndices = new Set();
+                const triggeredByRow = {};
+                
+                triggeredIndices.forEach(index => {
+                    const row = Math.floor(index / 10);
+                    if (!triggeredByRow[row]) {
+                        triggeredByRow[row] = [];
+                    }
+                    triggeredByRow[row].push(index);
+                });
+
+                for (const row in triggeredByRow) {
+                    triggeredByRow[row].sort((a, b) => a - b);
+                    const rowIndices = triggeredByRow[row];
+                    
+                    // Check for 3-square runs first
+                    for (let i = 0; i < rowIndices.length - 2; i++) {
+                        if (rowIndices[i+1] === rowIndices[i] + 1 && rowIndices[i+2] === rowIndices[i+1] + 1) {
+                            const middleIndex = rowIndices[i+1];
+                            if (!processedIndices.has(middleIndex)) {
+                                const baseIndex = middleIndex;
+                                const elevation = blendedElevations[baseIndex];
+                                const volume = volumeScale(elevation);
+                                const pan = panScale(baseIndex % 10);
+                                const noteIndex = (baseIndex % 10) % scaleIntervals.length;
+                                const semitones = scaleIntervals[noteIndex] + (currentOctave * 12) + 12; // +12 semitones for one octave up
+                                const frequency = rootFreq * Math.pow(2, semitones / 12);
+
+                                triggeredNotes.push({ frequency, volume, pan, index: baseIndex });
+                                processedIndices.add(rowIndices[i]);
+                                processedIndices.add(rowIndices[i+1]);
+                                processedIndices.add(rowIndices[i+2]);
+                            }
+                        }
+                    }
+                    
+                    // Check for 2-square runs
+                    for (let i = 0; i < rowIndices.length - 1; i++) {
+                        const index1 = rowIndices[i];
+                        const index2 = rowIndices[i+1];
+                        if (index2 === index1 + 1 && !processedIndices.has(index1) && !processedIndices.has(index2)) {
+                            const playOctaveUp = Math.random() < 0.5;
+                            let upOctaveIndex, normalIndex;
+                            if (playOctaveUp) {
+                                upOctaveIndex = index1;
+                                normalIndex = index2;
+                            } else {
+                                upOctaveIndex = index2;
+                                normalIndex = index1;
+                            }
+
+                            // Play up-octave note
+                            const elevationUp = blendedElevations[upOctaveIndex];
+                            const volumeUp = volumeScale(elevationUp);
+                            const panUp = panScale(upOctaveIndex % 10);
+                            const noteIndexUp = (upOctaveIndex % 10) % scaleIntervals.length;
+                            const semitonesUp = scaleIntervals[noteIndexUp] + (currentOctave * 12) + 12; // +12 for octave up
+                            const frequencyUp = rootFreq * Math.pow(2, semitonesUp / 12);
+                            triggeredNotes.push({ frequency: frequencyUp, volume: volumeUp, pan: panUp, index: upOctaveIndex });
+
+                            // Play normal note
+                            const elevationNormal = blendedElevations[normalIndex];
+                            const volumeNormal = volumeScale(elevationNormal);
+                            const panNormal = panScale(normalIndex % 10);
+                            const noteIndexNormal = (normalIndex % 10) % scaleIntervals.length;
+                            const semitonesNormal = scaleIntervals[noteIndexNormal] + (currentOctave * 12);
+                            const frequencyNormal = rootFreq * Math.pow(2, semitonesNormal / 12);
+                            triggeredNotes.push({ frequency: frequencyNormal, volume: volumeNormal, pan: panNormal, index: normalIndex });
+
+                            processedIndices.add(index1);
+                            processedIndices.add(index2);
+                            i++; // Skip the next index as it's part of this pair
+                        }
+                    }
+                }
+                
+                // Play all remaining, non-processed triggered notes
+                for (const index of triggeredIndices) {
+                    if (!processedIndices.has(index)) {
+                        const elevation = blendedElevations[index];
+                        const volume = volumeScale(elevation);
+                        const pan = panScale(index % 10);
+                        const noteIndex = (index % 10) % scaleIntervals.length;
+                        const semitones = scaleIntervals[noteIndex] + (currentOctave * 12);
+                        const frequency = rootFreq * Math.pow(2, semitones / 12);
+                        triggeredNotes.push({ frequency, volume, pan, index: index });
+                    }
+                }
+
+                // Play all the collected notes and flash the corresponding visual grid squares
+                const colorGridCells = colorGridContainer.children;
+                triggeredNotes.forEach(note => {
+                    playSound(note.frequency, note.volume, note.pan);
+                    
+                    // Find the corresponding square in the color grid and flash its outline
+                    const colorCell = colorGridCells[note.index];
+                    if (colorCell) {
+                        colorCell.classList.add('flash-outline');
+                        setTimeout(() => {
+                            colorCell.classList.remove('flash-outline');
+                        }, 500); // Duration of the flash animation
+                    }
+                });
+                
                 checkAndTriggerWhiteNoise(triggeredIndices);
             }
 
